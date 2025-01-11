@@ -26,63 +26,35 @@ static void uart_event_task(void* pvParameters); // 接收串口处理函数
 
 void processHexData(const char* hexData, uint8_t* outputArray, size_t& outputSize);
 void printHexArray(const uint8_t* hexArray, size_t size);
+void test_uart();
 
 void setup()
 {
     // write your initialization code here
     Serial.begin(115200);
-    uart_init();
-    xTaskCreate(uart_event_task, "uart_event_task", 2048, nullptr, 12, nullptr); // 串口中断处理线程
+    Serial1.begin(460800, SERIAL_8N1, UART_PIN_RX, UART_PIN_TX);
+    // Serial1.flush();
+    // uart_init();
+    // xTaskCreate(uart_event_task, "uart_event_task", 2048, nullptr, 12, nullptr); // 串口中断处理线程
+
 }
 
 void loop()
 {
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    vTaskDelay(1000);
+    test_uart();
 }
 
 uint16_t msg_seq = 1;
 
 void test_uart()
 {
-    // 输出数组
-    uint8_t hexArray[20]; // 每次处理20个字节
-    size_t chunkSize = 20; // 每次处理的字节数
-    // 分块处理数据
     size_t dataLength = strlen(mp3_data);
-    size_t offset = 0;
-    while (offset < dataLength) {
-        // 提取当前块的40个字符（20个字节）
-        const char* chunkData = mp3_data + offset;
-        size_t chunkLength = min(chunkSize * 2, dataLength - offset); // 每次最多取40个字符
-
-        // 处理当前块
-        processHexData(chunkData, hexArray, chunkSize);
-
-        // 打印当前块的结果
-        Serial.print("Processing chunk starting at offset ");
-        Serial.print(offset);
-        Serial.println(":");
-        printHexArray(hexArray, chunkSize);
-
-        sys_msg_com_data_t* msg = new sys_msg_com_data_t();
-        msg->header = VMUP_MSG_HEAD;
-        msg->data_length = chunkSize;
-        memcpy(msg->msg_data, hexArray, chunkSize);
-        msg->msg_type = VMUP_MSG_TYPE_CMD_DOWN;
-        msg->msg_cmd = VMUP_MSG_CMD_USER_START;
-        msg->msg_seq = msg_seq;
-        msg->tail = VMUP_MSG_TAIL;
-        vmup_port_send_packet_rev_msg(msg);
-        msg_seq++;
-
-        // 更新偏移量
-        offset += chunkLength;
-
-        // 如果剩余数据不足40个字符，跳出循环
-        if (chunkLength < 40) {
-            break;
-        }
-    }
+    Serial.printf("[dataLength]: %d", dataLength);
+    uint8_t data[dataLength];
+    size_t outputSize;
+    processHexData(mp3_data, data, outputSize);
+    Serial1.write(data, outputSize);
 }
 
 // 函数：将字符串形式的16进制数据转换为16进制数组
@@ -98,7 +70,7 @@ void processHexData(const char* hexData, uint8_t* outputArray, size_t& outputSiz
         byteStr[2] = '\0'; // 字符串结束符
 
         // 将字符串转换为16进制字节
-        outputArray[outputSize++] = strtol(byteStr, NULL, 16);
+        outputArray[outputSize++] = strtol(byteStr, nullptr, 16);
     }
 }
 
@@ -126,15 +98,13 @@ void printHexArray(const uint8_t* hexArray, size_t size) {
 void uart_init()
 {
     uart_config_t uart_config = {
-        .baud_rate = 115200,
+        .baud_rate = 460800,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_APB,
     };
-
-    Serial2.begin(115200, SERIAL_8N1, UART_PIN_TX, UART_PIN_RX, false, 20000UL, 112);
 
     uart_driver_install(EX_UART_NUM, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart1_queue, 0); // 安装串口驱动，并关联队列uart1_queue
     uart_param_config(EX_UART_NUM, &uart_config);
