@@ -31,17 +31,12 @@ void test_uart();
 void setup()
 {
     // write your initialization code here
-    Serial.begin(115200);
     Serial1.begin(460800, SERIAL_8N1, UART_PIN_RX, UART_PIN_TX);
-    // Serial1.flush();
-    // uart_init();
-    // xTaskCreate(uart_event_task, "uart_event_task", 2048, nullptr, 12, nullptr); // 串口中断处理线程
-
 }
 
 void loop()
 {
-    vTaskDelay(1000);
+    vTaskDelay(portTICK_PERIOD_MS);
     test_uart();
 }
 
@@ -50,7 +45,6 @@ uint16_t msg_seq = 1;
 void test_uart()
 {
     size_t dataLength = strlen(mp3_data);
-    Serial.printf("[dataLength]: %d", dataLength);
     uint8_t data[dataLength];
     size_t outputSize;
     processHexData(mp3_data, data, outputSize);
@@ -58,11 +52,13 @@ void test_uart()
 }
 
 // 函数：将字符串形式的16进制数据转换为16进制数组
-void processHexData(const char* hexData, uint8_t* outputArray, size_t& outputSize) {
+void processHexData(const char* hexData, uint8_t* outputArray, size_t& outputSize)
+{
     size_t len = strlen(hexData);
     outputSize = 0;
 
-    for (size_t i = 0; i < len; i += 2) {
+    for (size_t i = 0; i < len; i += 2)
+    {
         // 提取两个字符
         char byteStr[3];
         byteStr[0] = hexData[i];
@@ -75,19 +71,24 @@ void processHexData(const char* hexData, uint8_t* outputArray, size_t& outputSiz
 }
 
 // 函数：打印16进制数组
-void printHexArray(const uint8_t* hexArray, size_t size) {
+void printHexArray(const uint8_t* hexArray, size_t size)
+{
     Serial.println("{");
-    for (size_t i = 0; i < size; ++i) {
+    for (size_t i = 0; i < size; ++i)
+    {
         Serial.print("0x");
-        if (hexArray[i] < 0x10) {
+        if (hexArray[i] < 0x10)
+        {
             Serial.print("0"); // 补零
         }
         Serial.print(hexArray[i], HEX);
-        if (i != size - 1) {
+        if (i != size - 1)
+        {
             Serial.print(", ");
         }
         // 每16个字节换行
-        if ((i + 1) % 16 == 0) {
+        if ((i + 1) % 16 == 0)
+        {
             Serial.println();
         }
     }
