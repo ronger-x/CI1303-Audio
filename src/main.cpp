@@ -1,9 +1,15 @@
 #include <Arduino.h>
-#include "uart.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <VoiceModuleUART.h>
 
-#include "voice_module_uart_protocol.h"
+// WiFi 连接信息
+const char* ssid = "ronger6";
+const char* password = "D724b28ff.";
 
-#include "mp3_data.h"
+// WiFi 连接次数
+uint8_t connectCount = 10;
 
 /************************* 串口变量声明 ****************************/
 #define BUF_SIZE (1024)
@@ -13,165 +19,272 @@
 
 #define UART_PIN_TX GPIO_NUM_9 // 串口发送引脚GPIO_9
 #define UART_PIN_RX GPIO_NUM_10 // 串口接收引脚GPIO_10
+#define UART_BAUD_RATE 921600 // 串口接收引脚GPIO_10
 
-static QueueHandle_t uart1_queue; // 串口接收队列,当串口完成数据接收后，发送消息给该队列，只需在线程等待该消息队列完成数据处理
+// Create voice module instance
+VoiceModuleUART voiceModule;
+// Variables for demo
+uint32_t lastActionTime = 0;
+uint8_t voiceModuleState = 0;
 
+void wifiConnect();
 
-// 定义消息队列
-QueueHandle_t network_msg_recv_queue;
+void voiceModuleInit();
 
-void uart_init(); // 串口初始化
-void Uart_data_process(uint8_t* data, size_t len); // 串口数据处理函数
-static void uart_event_task(void* pvParameters); // 接收串口处理函数
+void onMessageReceived(const sys_msg_com_data_t& msg);
 
-void processHexData(const char* hexData, uint8_t* outputArray, size_t& outputSize);
-void printHexArray(const uint8_t* hexArray, size_t size);
-void test_uart();
+void onAsrResult(uint8_t seq, const uint8_t* data, uint16_t dataLen);
+
+void onStatusNotify(uint8_t status);
 
 void setup()
 {
-    // write your initialization code here
-    Serial1.begin(460800, SERIAL_8N1, UART_PIN_RX, UART_PIN_TX);
+    // 初始化 ESP32 日志串口
+    Serial.begin(115200);
+    // 初始化 WiFi 连接
+    wifiConnect();
+    // 初始化语音模块
+    voiceModuleInit();
 }
 
 void loop()
 {
-    vTaskDelay(portTICK_PERIOD_MS);
-    test_uart();
+    // vTaskDelay(300);
+    // 豫章故郡，洪都新府。星分翼轸，地接衡庐。
+    // 襟三江而带五湖，控蛮荆而引瓯越。物华天宝，龙光射牛斗之墟；
+    // 人杰地灵，徐孺下陈蕃之榻。雄州雾列，俊采星驰。
+    // 台隍枕夷夏之交 ，宾主尽东南之美。都督阎公之雅望，棨戟遥临；
+    // 宇文新州之懿范，襜帷暂驻。十旬休假，胜友如云；
+    // 千里逢迎，高朋满座。腾蛟起凤，孟学士之词宗；
+    // 紫电青霜，王将军之武库。家君作宰，路出名区；童子何知，躬逢胜饯
+    // test_http("https://static.rymcu.com/article/1736769289579.mp3"); // 16kbps 16kHz 1bit
+    // test_http("https://static.rymcu.com/article/1736865358460.wav"); // 16kbps 16kHz 1bit
+    // vTaskDelay(60000 * 5);
+
+    // Process incoming messages from voice module
+    voiceModule.update();
+
+    // Simple demo sequence
+    uint32_t currentTime = millis();
+    if (currentTime - lastActionTime > 5000)
+    {
+        // Every 5 seconds
+        lastActionTime = currentTime;
+
+        // Cycle through different commands
+        switch (voiceModuleState)
+        {
+        case 0:
+            {
+                Serial.println("Getting module version...");
+                voiceModule.getVersion(VMUP_MSG_DATA_VER_APP);
+                break;
+            }
+
+        case 1:
+            {
+                Serial.println("Playing voice ID 1...");
+                voiceModule.playVoiceById(1);
+                break;
+            }
+
+        case 2:
+            {
+                Serial.println("Stopping playback...");
+                voiceModule.controlPlayback(VMUP_MSG_DATA_PLAY_STOP);
+                break;
+            }
+
+        case 3:
+            {
+                Serial.println("Setting wakeup mode: ON");
+                voiceModule.setWakeupMode(true);
+                break;
+            }
+
+        case 4:
+            {
+                Serial.println("Setting wakeup mode: OFF");
+                voiceModule.setWakeupMode(false);
+                break;
+            }
+        default:
+            {
+                break;
+            }
+        }
+
+        // Cycle through states
+        voiceModuleState = (voiceModuleState + 1) % 5;
+    }
+}
+
+void wifiConnect()
+{
+    Serial.println("Init WiFi...");
+    WiFi.begin(ssid, password);
+    while (WiFiClass::status() != WL_CONNECTED && connectCount > 0)
+    {
+        delay(500);
+        Serial.print(".");
+        connectCount--;
+    }
+    if (WiFiClass::status() != WL_CONNECTED)
+    {
+        Serial.println("WiFi connection failed!");
+        return;
+    }
+    Serial.println("WiFi connected!");
+}
+
+void voiceModuleInit()
+{
+    Serial.println("Init voice module...");
+    // Initialize voice module with Serial1
+    if (!voiceModule.begin(Serial1, UART_PIN_RX, UART_PIN_TX, UART_BAUD_RATE))
+    {
+        Serial.println("Voice module initialization failed!");
+        return;
+    }
+
+    // Set callback functions
+    voiceModule.setMessageCallback(onMessageReceived);
+    voiceModule.setAsrResultCallback(onAsrResult);
+    voiceModule.setStatusNotifyCallback(onStatusNotify);
+
+    // Initial configuration
+    voiceModule.setVolume(80); // Set volume to 80%
+
+    Serial.println("Voice Module initialized successfully");
+    lastActionTime = millis();
+}
+
+// Callback for all received messages
+void onMessageReceived(const sys_msg_com_data_t& msg)
+{
+    Serial.print("Message received - Type: 0x");
+    Serial.print(msg.msg_type, HEX);
+    Serial.print(", Command: 0x");
+    Serial.print(msg.msg_cmd, HEX);
+    Serial.print(", Sequence: ");
+    Serial.print(msg.msg_seq);
+    Serial.print(", Data Length: ");
+    Serial.println(msg.data_length);
+
+    // Print data bytes if any
+    if (msg.data_length > 0)
+    {
+        Serial.print("Data: ");
+        for (int i = 0; i < msg.data_length; i++)
+        {
+            Serial.print("0x");
+            Serial.print(msg.msg_data[i], HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
+    }
+}
+
+// Callback specifically for ASR results
+void onAsrResult(uint8_t seq, const uint8_t* data, uint16_t dataLen)
+{
+    Serial.println("ASR Result received:");
+
+    if (dataLen > 0)
+    {
+        Serial.print("Command ID: ");
+        Serial.println(data[0]);
+
+        // If additional data is available (like confidence score)
+        if (dataLen > 1)
+        {
+            Serial.print("Additional data: ");
+            for (int i = 1; i < dataLen; i++)
+            {
+                Serial.print(data[i]);
+                Serial.print(" ");
+            }
+            Serial.println();
+        }
+    }
+}
+
+// Callback for status notifications
+void onStatusNotify(uint8_t status)
+{
+    Serial.print("Status notification: ");
+
+    switch (status)
+    {
+    case VMUP_MSG_DATA_NOTIFY_POWERON:
+        Serial.println("Power On");
+        break;
+
+    case VMUP_MSG_DATA_NOTIFY_WAKEUPENTER:
+        Serial.println("Wakeup Entered");
+        break;
+
+    case VMUP_MSG_DATA_NOTIFY_WAKEUPEXIT:
+        Serial.println("Wakeup Exited");
+        break;
+
+    case VMUP_MSG_DATA_NOTIFY_PLAYSTART:
+        Serial.println("Playback Started");
+        break;
+
+    case VMUP_MSG_DATA_NOTIFY_PLAYEND:
+        Serial.println("Playback Ended");
+        break;
+
+    default:
+        Serial.print("Unknown (0x");
+        Serial.print(status, HEX);
+        Serial.println(")");
+        break;
+    }
 }
 
 uint16_t msg_seq = 1;
 
-void test_uart()
+void test_http(const char* url)
 {
-    size_t dataLength = strlen(mp3_data);
-    uint8_t data[dataLength];
-    size_t outputSize;
-    processHexData(mp3_data, data, outputSize);
-    Serial1.write(data, outputSize);
-}
-
-// 函数：将字符串形式的16进制数据转换为16进制数组
-void processHexData(const char* hexData, uint8_t* outputArray, size_t& outputSize)
-{
-    size_t len = strlen(hexData);
-    outputSize = 0;
-
-    for (size_t i = 0; i < len; i += 2)
+    // 开始下载音频文件
+    HTTPClient audioHttp;
+    audioHttp.begin(url);
+    int audioHttpCode = audioHttp.GET();
+    if (audioHttpCode > 0)
     {
-        // 提取两个字符
-        char byteStr[3];
-        byteStr[0] = hexData[i];
-        byteStr[1] = hexData[i + 1];
-        byteStr[2] = '\0'; // 字符串结束符
-
-        // 将字符串转换为16进制字节
-        outputArray[outputSize++] = strtol(byteStr, nullptr, 16);
-    }
-}
-
-// 函数：打印16进制数组
-void printHexArray(const uint8_t* hexArray, size_t size)
-{
-    Serial.println("{");
-    for (size_t i = 0; i < size; ++i)
-    {
-        Serial.print("0x");
-        if (hexArray[i] < 0x10)
+        Serial.println("Audio file downloaded successfully");
+        if (audioHttpCode == HTTP_CODE_OK)
         {
-            Serial.print("0"); // 补零
-        }
-        Serial.print(hexArray[i], HEX);
-        if (i != size - 1)
-        {
-            Serial.print(", ");
-        }
-        // 每16个字节换行
-        if ((i + 1) % 16 == 0)
-        {
-            Serial.println();
-        }
-    }
-    Serial.println("\n};");
-}
+            // Get the size of the audio file (optional, for logging)
+            int fileSize = audioHttp.getSize();
+            Serial.printf("Audio file size: %d bytes\n", fileSize);
 
-/*************************  串口初始化  ****************************/
-void uart_init()
-{
-    uart_config_t uart_config = {
-        .baud_rate = 460800,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_APB,
-    };
+            // Get the data stream
+            WiFiClient* stream = audioHttp.getStreamPtr();
 
-    uart_driver_install(EX_UART_NUM, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart1_queue, 0); // 安装串口驱动，并关联队列uart1_queue
-    uart_param_config(EX_UART_NUM, &uart_config);
+            // Buffer to hold the data chunks
+            uint8_t buffer[RD_BUF_SIZE];
 
-    uart_set_pin(EX_UART_NUM, UART_PIN_TX, UART_PIN_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); // 设置串口引脚（TX:9,RX:10）
-    uart_enable_pattern_det_baud_intr(EX_UART_NUM, '+', PATTERN_CHR_NUM, 9, 0, 0); // Set uart pattern detect function.
-    uart_pattern_queue_reset(EX_UART_NUM, 20); // Reset the pattern queue length to record at most 20 pattern positions.
-}
-
-
-/*************************  串口中断事件处理线程  ****************************/
-static void uart_event_task(void* pvParameters)
-{
-    uart_event_t event;
-    size_t buffered_size;
-    uint8_t* dtmp = (uint8_t*)malloc(RD_BUF_SIZE);
-    for (;;)
-    {
-        if (xQueueReceive(uart1_queue, (void*)&event, (TickType_t)portMAX_DELAY))
-        {
-            bzero(dtmp, RD_BUF_SIZE);
-            switch (event.type)
+            // Read and send the audio data in chunks
+            while (audioHttp.connected() && stream->available())
             {
-            case UART_DATA:
-                Serial.printf("[UART DATA]: %d", event.size);
-                uart_read_bytes(EX_UART_NUM, dtmp, event.size, portMAX_DELAY); // 读出接收到的数据
-                uart_write_bytes(EX_UART_NUM, (const char*)dtmp, event.size); // 打印接收到的数据
-                Uart_data_process(dtmp, event.size); // 处理接收到的数据
-                break;
-            default:
-                Serial.printf("uart event type: %d", event.type);
-                break;
+                // Read a chunk of data
+                size_t len = stream->readBytes(buffer, RD_BUF_SIZE);
+
+                // Send the chunk to the voice chip via serial
+                // Serial1.write(buffer, len);
+
+                // Log the progress (optional)
+                Serial.printf("Sent %d bytes to voice chip\n", len);
             }
         }
+        Serial.println("Audio download and transmission complete.");
     }
-    free(dtmp);
-    dtmp = nullptr;
-    vTaskDelete(nullptr);
-}
-
-
-/*************************   串口数据处理  ****************************/
-void Uart_data_process(uint8_t* data, size_t len)
-{
-    // 示例数据  A5 FC 07 00 A0 91 07 01 55 E4 01 00 00 A8 1B 03 FB
-    // 检查数据长度
-    if (len == 0 || len < 10) return;
-    // 获取前两个字节
-    uint16_t head = (data[0] << 8) | data[1];
-    // 获取最后一个字节
-    uint8_t tail = data[len - 1];
-    if (head != 0xa5fc || tail != 0xfb) return;
-    // 获取数据长度
-    uint16_t data_len = (data[2] << 8) | data[3];
-    // 获取消息类型
-    uint8_t msg_type = data[4];
-    Serial.printf("msg_type: %d", msg_type);
-    // 获取消息序号
-    uint8_t msg_seq = data[5];
-    Serial.printf("msg_seq: %d", msg_seq);
-    // 获取数据内容
-    char* data_str = (char*)malloc(data_len + 1);
-    memcpy(data_str, data + 6, data_len);
-    data_str[data_len] = '\0';
-    Serial.printf("data_str: %s", data_str);
-    free(data_str);
-    // 获取校验和
-    uint16_t check_sum = 0;
+    else
+    {
+        Serial.println("Audio file download failed");
+    }
+    audioHttp.end();
 }
