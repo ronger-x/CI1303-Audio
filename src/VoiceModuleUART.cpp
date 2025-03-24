@@ -31,7 +31,8 @@ bool VoiceModuleUART::begin(HardwareSerial& serial, int rxPin, int txPin, uint32
     _serial->begin(baudRate, SERIAL_8N1, rxPin, txPin);
     _isInitialized = true;
     _lastReceiveTime = millis();
-    return true;
+    // Check if serial is available
+    return _serial->available() >= 0;
 }
 
 void VoiceModuleUART::update() {

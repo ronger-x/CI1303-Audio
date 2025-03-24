@@ -10,7 +10,6 @@
 #define VOICE_MODULE_UART_H
 
 #include <Arduino.h>
-#include <stdint.h>
 #include <functional>
 
 #define VMUP_MSG_DATA_MAX_SIZE (20)
