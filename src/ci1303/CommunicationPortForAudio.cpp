@@ -1,4 +1,5 @@
 #include "CommunicationPortForAudio.h"
+#include "SlaveMessageHandle.h"
 #include "esp_log.h"
 #include <string.h>
 
@@ -169,8 +170,7 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
 
     int32_t ret = 0;
     uint32_t data_len = 0;
-    uint32_t header_size = 16; // 假设消息头大小为16字节
-    void *recv_head_part = nullptr;
+    cias_standard_head_t *recv_head_part = nullptr;
     comm_recv_state_t slave_msg_state = MSG_FIND_HEAD;
 
     uint8_t recv_slave_buf[VOICE_RECV_DATA_QUEUE_ITEAM_SIZE];
@@ -181,46 +181,43 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
     while (true) {
         // 查找消息头
         if (slave_msg_state == MSG_FIND_HEAD) {
-            ret = communicationRecv(recv_slave_buf + data_len, header_size - data_len);
+            ret = communicationRecv(recv_slave_buf + data_len, sizeof(cias_standard_head_t) - data_len);
 
-            if (ret > 0) {
+            if (ret >= 0 && ret <= sizeof(cias_standard_head_t)) {
                 data_len += ret;
-                if (data_len < header_size) {
+                if (data_len < sizeof(cias_standard_head_t)) {
                     vTaskDelay(pdMS_TO_TICKS(5));
                     continue;
                 } else {
-                    recv_head_part = recv_slave_buf;
+                    recv_head_part = (cias_standard_head_t *)recv_slave_buf;
                     data_len = 0;
 
-                    // 这里检查消息头格式是否正确
-                    uint32_t *magic = (uint32_t *)recv_slave_buf;
-                    uint16_t *len = (uint16_t *)(recv_slave_buf + 4);
-
-                    if (*magic == 0x5a5aa5a5) { // 预定义的魔数
-                        if (*len == 0) {
+                    if (recv_head_part->magic == CIAS_STANDARD_MAGIC) { // 预定义的魔数
+                        if (recv_head_part->len == 0) {
                             slave_msg_state = MSG_VERIFY;
                         } else {
                             slave_msg_state = MSG_RECV_MSG;
                         }
                     } else {
-                        ESP_LOGE(TAG, "Invalid message header: 0x%08x", (unsigned int)(*magic));
+                        ESP_LOGE(TAG, "recv_headpart magic err1\n");
                         slave_msg_state = MSG_FIND_HEAD;
                         memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
                     }
                 }
             } else {
-                vTaskDelay(pdMS_TO_TICKS(10));
+                ESP_LOGE(TAG, "recv_headpart magic err2\n");
+                slave_msg_state = MSG_FIND_HEAD;
+                memset(recv_slave_buf,0,VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
             }
         }
 
         // 接收消息体
         if (slave_msg_state == MSG_RECV_MSG) {
-            uint16_t *msg_len = (uint16_t *)(recv_slave_buf + 4);
-            ret = communicationRecv(recv_slave_buf + header_size + data_len, *msg_len - data_len);
+            ret = communicationRecv(recv_slave_buf + sizeof(cias_standard_head_t) + data_len, recv_head_part->len - data_len);
 
-            if (ret > 0) {
+            if (ret>=0 && ret <= recv_head_part->len) {
                 data_len += ret;
-                if (data_len < *msg_len) {
+                if (data_len < recv_head_part->len) {
                     vTaskDelay(pdMS_TO_TICKS(2));
                     continue;
                 } else {
@@ -228,7 +225,10 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
                     slave_msg_state = MSG_VERIFY;
                 }
             } else {
-                vTaskDelay(pdMS_TO_TICKS(5));
+                ESP_LOGE(TAG, "recv_headpart magic err2\n");
+                data_len = 0;
+                memset(recv_slave_buf,0,VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
+                slave_msg_state = MSG_FIND_HEAD;
             }
         }
 
@@ -238,13 +238,14 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
 
             // 通过队列传递
             if (xQueueSend(messageRecvQueue, recv_slave_buf, pdMS_TO_TICKS(10)) != pdPASS) {
-                ESP_LOGE(TAG, "messageRecvQueue send fail...");
+                ESP_LOGE(TAG, "messageRecvQueue send fail...\r\n");
             }
 
             data_len = 0;
             memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
         }
 
+        ret = 0;
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
