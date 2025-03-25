@@ -2,7 +2,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <VoiceModuleUART.h>
+#include "ci1303/CommunicationPortForAudio.h"
+#include "ci1303/SlaveMessageHandle.h"
 
 // WiFi 连接信息
 const char* ssid = "ronger6";
@@ -17,25 +18,10 @@ uint8_t connectCount = 10;
 #define EX_UART_NUM 1 // set uart1
 #define PATTERN_CHR_NUM (3)
 
-#define UART_PIN_TX GPIO_NUM_9 // 串口发送引脚GPIO_9
-#define UART_PIN_RX GPIO_NUM_10 // 串口接收引脚GPIO_10
-#define UART_BAUD_RATE 921600 // 串口接收引脚GPIO_10
-
 // Create voice module instance
-VoiceModuleUART voiceModule;
-// Variables for demo
-uint32_t lastActionTime = 0;
-uint8_t voiceModuleState = 0;
+SlaveMessageHandle slaveMessageHandle;
 
 void wifiConnect();
-
-void voiceModuleInit();
-
-void onMessageReceived(const sys_msg_com_data_t& msg);
-
-void onAsrResult(uint8_t seq, const uint8_t* data, uint16_t dataLen);
-
-void onStatusNotify(uint8_t status);
 
 void setup()
 {
@@ -43,8 +29,16 @@ void setup()
     Serial.begin(115200);
     // 初始化 WiFi 连接
     wifiConnect();
-    // 初始化语音模块
-    voiceModuleInit();
+    // 初始化通信端口
+    if (voiceModulePort.communicationPortInit(UART_NUM_1) != VOICE_OK) {
+        Serial.println("Failed to initialize voice port");
+        return;
+    }
+    // 初始化SlaveMessageHandle的任务
+    if (slaveMessageHandle.messageHandlerInit() != VOICE_OK) {
+        Serial.println("Failed to initialize slave message tasks");
+        return;
+    }
 }
 
 void loop()
@@ -60,63 +54,6 @@ void loop()
     // test_http("https://static.rymcu.com/article/1736769289579.mp3"); // 16kbps 16kHz 1bit
     // test_http("https://static.rymcu.com/article/1736865358460.wav"); // 16kbps 16kHz 1bit
     // vTaskDelay(60000 * 5);
-
-    // Process incoming messages from voice module
-    voiceModule.update();
-
-    // Simple demo sequence
-    uint32_t currentTime = millis();
-    if (currentTime - lastActionTime > 5000)
-    {
-        // Every 5 seconds
-        lastActionTime = currentTime;
-
-        // Cycle through different commands
-        switch (voiceModuleState)
-        {
-        case 0:
-            {
-                Serial.println("Getting module version...");
-                voiceModule.getVersion(VMUP_MSG_DATA_VER_APP);
-                break;
-            }
-
-        case 1:
-            {
-                Serial.println("Playing voice ID 1...");
-                voiceModule.playVoiceById(1);
-                break;
-            }
-
-        case 2:
-            {
-                Serial.println("Stopping playback...");
-                voiceModule.controlPlayback(VMUP_MSG_DATA_PLAY_STOP);
-                break;
-            }
-
-        case 3:
-            {
-                Serial.println("Setting wakeup mode: ON");
-                voiceModule.setWakeupMode(true);
-                break;
-            }
-
-        case 4:
-            {
-                Serial.println("Setting wakeup mode: OFF");
-                voiceModule.setWakeupMode(false);
-                break;
-            }
-        default:
-            {
-                break;
-            }
-        }
-
-        // Cycle through states
-        voiceModuleState = (voiceModuleState + 1) % 5;
-    }
 }
 
 void wifiConnect()
@@ -135,113 +72,6 @@ void wifiConnect()
         return;
     }
     Serial.println("WiFi connected!");
-}
-
-void voiceModuleInit()
-{
-    Serial.println("Init voice module...");
-    // Initialize voice module with Serial1
-    if (!voiceModule.begin(Serial1, UART_PIN_RX, UART_PIN_TX, UART_BAUD_RATE))
-    {
-        Serial.println("Voice module initialization failed!");
-        return;
-    }
-
-    // Set callback functions
-    voiceModule.setMessageCallback(onMessageReceived);
-    voiceModule.setAsrResultCallback(onAsrResult);
-    voiceModule.setStatusNotifyCallback(onStatusNotify);
-
-    // Initial configuration
-    voiceModule.setVolume(80); // Set volume to 80%
-
-    Serial.println("Voice Module initialized successfully");
-    lastActionTime = millis();
-}
-
-// Callback for all received messages
-void onMessageReceived(const sys_msg_com_data_t& msg)
-{
-    Serial.print("Message received - Type: 0x");
-    Serial.print(msg.msg_type, HEX);
-    Serial.print(", Command: 0x");
-    Serial.print(msg.msg_cmd, HEX);
-    Serial.print(", Sequence: ");
-    Serial.print(msg.msg_seq);
-    Serial.print(", Data Length: ");
-    Serial.println(msg.data_length);
-
-    // Print data bytes if any
-    if (msg.data_length > 0)
-    {
-        Serial.print("Data: ");
-        for (int i = 0; i < msg.data_length; i++)
-        {
-            Serial.print("0x");
-            Serial.print(msg.msg_data[i], HEX);
-            Serial.print(" ");
-        }
-        Serial.println();
-    }
-}
-
-// Callback specifically for ASR results
-void onAsrResult(uint8_t seq, const uint8_t* data, uint16_t dataLen)
-{
-    Serial.println("ASR Result received:");
-
-    if (dataLen > 0)
-    {
-        Serial.print("Command ID: ");
-        Serial.println(data[0]);
-
-        // If additional data is available (like confidence score)
-        if (dataLen > 1)
-        {
-            Serial.print("Additional data: ");
-            for (int i = 1; i < dataLen; i++)
-            {
-                Serial.print(data[i]);
-                Serial.print(" ");
-            }
-            Serial.println();
-        }
-    }
-}
-
-// Callback for status notifications
-void onStatusNotify(uint8_t status)
-{
-    Serial.print("Status notification: ");
-
-    switch (status)
-    {
-    case VMUP_MSG_DATA_NOTIFY_POWERON:
-        Serial.println("Power On");
-        break;
-
-    case VMUP_MSG_DATA_NOTIFY_WAKEUPENTER:
-        Serial.println("Wakeup Entered");
-        break;
-
-    case VMUP_MSG_DATA_NOTIFY_WAKEUPEXIT:
-        Serial.println("Wakeup Exited");
-        break;
-
-    case VMUP_MSG_DATA_NOTIFY_PLAYSTART:
-        Serial.println("Playback Started");
-        break;
-
-    case VMUP_MSG_DATA_NOTIFY_PLAYEND:
-        Serial.println("Playback Ended");
-        break;
-
-    default:
-        Serial.print("Unknown (0x");
-        Serial.print(status, HEX);
-        Serial.println(")");
-        break;
-    }
 }
 
 uint16_t msg_seq = 1;

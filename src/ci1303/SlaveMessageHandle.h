@@ -2,14 +2,19 @@
 #define CI1303_AUDIO_SLAVE_MESSAGE_HANDLE_H
 
 #include "Arduino.h"
-#include "driver/uart.h" // For ESP32 UART configuration
+#include "driver/uart.h"
 
 // --- Configuration Constants ---
 constexpr uint32_t CIAS_STANDARD_MAGIC = 0x5a5aa5a5;
 constexpr uint16_t CIAS_SEND_MSG_BUF_LEN = 1024 + 16; // 1024 + 16
 constexpr uint16_t CIAS_PCM_UPLOAD_QUEUE_SIZE = 10;
 
-// --- Data Structures (Using packed attributes for efficient memory usage) ---
+// 任务配置
+#define VOICE_DEAL_RECV_AUDIO_DATA_TASK_NAME              "voice-deal-recv-audio"
+#define VOICE_DEAL_RECV_AUDIO_DATA_TASK_SIZE              (1024*4)
+#define VOICE_DEAL_RECV_AUDIO_DATA_TASK_PRIORITY          1
+
+// --- Data Structures ---
 
 /**
  * @brief Standard message header structure
@@ -47,15 +52,6 @@ typedef enum {
     REPEAT_FILL = 0x123456ab,
 } cias_fill_type_t;
 
-/**
- * @brief Slave receiving state enumeration
- */
-typedef enum {
-    MSG_FIND_HEAD = 0,
-    MSG_RECV_MSG = 1,
-    MSG_VERIFY = 2,
-} slave_recv_state_t;
-
 // --- Constants and Extern Variables ---
 
 #define AUDIO_MUSIC_BUFF_COUNT (29)
@@ -66,13 +62,6 @@ extern volatile bool audio_player_need_data_2L;
 extern volatile bool audio_player_need_data_3L;
 
 #define TEST_PLAYER 0 // Play raw data test
-
-//  We'll use the ESP32's UART driver instead of HardwareSerial directly in the class
-
-// --- Queue Handles ---
-
-extern QueueHandle_t _messageRecvQueue;
-extern QueueHandle_t _messageSendQueue;
 
 /**
  * @brief WiFi communication command enumeration
@@ -145,43 +134,29 @@ typedef enum {
 
 class SlaveMessageHandle {
 private:
-    uart_port_t uart_num; // UART port number
-    TaskHandle_t recvTaskHandle = nullptr;  // Handle for the receive task
-    TaskHandle_t sendTaskHandle = nullptr;  // Handle for the send task
-    TaskHandle_t recvDealTaskHandle = nullptr; // Handle for the receive and deal task
+    TaskHandle_t recvDealTaskHandle = nullptr;  // 处理接收消息的任务
 
-    // Internal helper functions (made private)
-    int32_t communication_recv(uint8_t *addr, int32_t length);
-    //
-    int32_t communication_send(const uint8_t *data, uint16_t length);
-
-    static void slaveMessageRecvTask(void *pvParameters);
-
-    bool processReceivedMessage(uint8_t* buffer, uint16_t len);
-
-    static void slaveMessageSendTask(void *pvParameters);
-
-    static void salveMessageRecvDealTask(void *pvParameters);
-
+    // 消息处理相关
+    static void slaveMessageRecvDealTask(void *pvParameters);
     uint16_t calculateChecksum(const uint8_t *data, uint16_t length);
-
     int initSendMsgHeader(uint8_t *buffer, uint16_t buffer_size, uint16_t data_len, uint16_t msg_type, uint32_t fill_data, uint16_t version);
 
 public:
-    SlaveMessageHandle() {} //Default constructor
-    SlaveMessageHandle(uart_port_t uart_num); // Parameterized constructor
+    SlaveMessageHandle();
     ~SlaveMessageHandle();
 
-    int communicationTaskInit();
+    // 初始化函数
+    int messageHandlerInit();
 
-    int voicePortInit(uart_port_t uart_num);
+    // 消息回调函数
+    static int32_t messageHandlerCallback(uint8_t *msg_buf, int32_t msg_len);
 
+    // 消息发送
     void sendMessage(uint16_t cmd, cias_fill_type_t type, const uint8_t *data, uint16_t length);
-
     void clearSendQueue();
 
+    // 音频状态管理
     uint16_t getAudioState();
-
     uint16_t setAudioState(int state);
 };
 
