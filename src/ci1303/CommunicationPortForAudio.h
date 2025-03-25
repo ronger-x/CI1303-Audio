@@ -48,34 +48,30 @@ extern QueueHandle_t messageSendQueue;
 // --- 通信类定义 ---
 class CommunicationPortForAudio {
 private:
-    uart_port_t uart_num;
-    TaskHandle_t recvTaskHandle = nullptr;
-    TaskHandle_t sendTaskHandle = nullptr;
+    static uart_port_t uart_num;
+    static TaskHandle_t recvTaskHandle;
+    static TaskHandle_t sendTaskHandle;
 
     // 状态标志
-    bool initialized = false;
+    static bool initialized;
+
+public:
+    // 初始化方法
+    static int communicationPortInit(uart_port_t uart_port);
+    static int communicationTaskInit();
+
+    // 通信方法
+    static int32_t communicationRecv(uint8_t *addr, int32_t length);
+    static int32_t communicationSend(const uint8_t *data, uint16_t length);
 
     // 通信任务
     static void communicationRecvTask(void *pvParameters);
     static void communicationSendTask(void *pvParameters);
 
-public:
-    CommunicationPortForAudio();
-    ~CommunicationPortForAudio();
-
-    // 初始化方法
-    int communicationPortInit(uart_port_t uart_port);
-    int communicationTaskInit();
-
-    // 通信方法
-    int32_t communicationRecv(uint8_t *addr, int32_t length);
-    int32_t communicationSend(const uint8_t *data, uint16_t length);
-
+    // 清理资源
+    static void cleanup();
     // 获取状态
-    bool isInitialized() const { return initialized; }
+    static bool isInitialized() { return initialized; }
 };
-
-// 全局通信接口实例
-extern CommunicationPortForAudio voiceModulePort;
 
 #endif // COMMUNICATION_PORT_FOR_AUDIO_H

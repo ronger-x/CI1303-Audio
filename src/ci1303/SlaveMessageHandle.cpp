@@ -9,6 +9,9 @@ volatile bool audio_player_need_data_1L = false;
 volatile bool audio_player_need_data_2L = false;
 volatile bool audio_player_need_data_3L = false;
 
+// --- 静态成员变量初始化 ---
+TaskHandle_t SlaveMessageHandle::recvDealTaskHandle = nullptr;
+
 #define CLOUD_IOT_ENABLE 1
 
 /**************************全局变量*************************/
@@ -227,19 +230,6 @@ void cloudRecvMessageHandle(uint8_t *msg_buf)
 }
 #endif
 
-// --- 构造函数和析构函数 ---
-SlaveMessageHandle::SlaveMessageHandle() {
-    // 默认构造
-}
-
-SlaveMessageHandle::~SlaveMessageHandle() {
-    // 清理任务
-    if (recvDealTaskHandle) {
-        vTaskDelete(recvDealTaskHandle);
-        recvDealTaskHandle = nullptr;
-    }
-}
-
 // --- 消息处理回调函数 ---
 int32_t SlaveMessageHandle::messageHandlerCallback(uint8_t *msg_buf, int32_t msg_len) {
     if (!msg_buf || msg_len <= 0) {
@@ -306,7 +296,7 @@ void SlaveMessageHandle::slaveMessageRecvDealTask(void *pvParameters) {
 
 // --- 初始化通信任务 ---
 int SlaveMessageHandle::messageHandlerInit() {
-    if (voiceModulePort.communicationTaskInit() != VOICE_OK) {
+    if (CommunicationPortForAudio::communicationTaskInit() != VOICE_OK) {
         return VOICE_FAIL;
     }
     // 创建消息处理任务
@@ -314,7 +304,7 @@ int SlaveMessageHandle::messageHandlerInit() {
             slaveMessageRecvDealTask,
             VOICE_DEAL_RECV_AUDIO_DATA_TASK_NAME,
             VOICE_DEAL_RECV_AUDIO_DATA_TASK_SIZE / sizeof(StackType_t),
-            this,
+            nullptr,
             VOICE_DEAL_RECV_AUDIO_DATA_TASK_PRIORITY,
             &recvDealTaskHandle
     );
@@ -353,7 +343,7 @@ void SlaveMessageHandle::sendMessage(uint16_t cmd, cias_fill_type_t type, const 
     // 直接发送或通过队列发送
     if (cmd == GET_PROFILE || cmd == NEED_PROFILE) {
         // 直接同步发送
-        int32_t result = voiceModulePort.communicationSend(buffer, 16 + length);
+        int32_t result = CommunicationPortForAudio::communicationSend(buffer, 16 + length);
         if (result < 0) {
             ESP_LOGE(TAG, "communicationSend failed");
         }
@@ -396,7 +386,7 @@ int SlaveMessageHandle::initSendMsgHeader(uint8_t *buffer, uint16_t buffer_size,
     // 计算校验和
     header->checksum = calculateChecksum(buffer + 4, data_len + buffer_size - 4);
 
-    return 0;
+    return VOICE_OK;
 }
 
 // --- 计算校验和 ---

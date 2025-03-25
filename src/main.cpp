@@ -18,9 +18,6 @@ uint8_t connectCount = 10;
 #define EX_UART_NUM 1 // set uart1
 #define PATTERN_CHR_NUM (3)
 
-// Create voice module instance
-SlaveMessageHandle slaveMessageHandle;
-
 void wifiConnect();
 
 void setup()
@@ -30,12 +27,12 @@ void setup()
     // 初始化 WiFi 连接
 //    wifiConnect();
     // 初始化通信端口
-    if (voiceModulePort.communicationPortInit(UART_NUM_1) != VOICE_OK) {
+    if (CommunicationPortForAudio::communicationPortInit(UART_NUM_1) != VOICE_OK) {
         Serial.println("Failed to initialize voice port");
         return;
     }
     // 初始化SlaveMessageHandle的任务
-    if (slaveMessageHandle.messageHandlerInit() != VOICE_OK) {
+    if (SlaveMessageHandle::messageHandlerInit() != VOICE_OK) {
         Serial.println("Failed to initialize slave message tasks");
         return;
     }

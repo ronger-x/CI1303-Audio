@@ -134,30 +134,29 @@ typedef enum {
 
 class SlaveMessageHandle {
 private:
-    TaskHandle_t recvDealTaskHandle = nullptr;  // 处理接收消息的任务
+    static TaskHandle_t recvDealTaskHandle;  // 处理接收消息的任务
 
     // 消息处理相关
     static void slaveMessageRecvDealTask(void *pvParameters);
-    uint16_t calculateChecksum(const uint8_t *data, uint16_t length);
-    int initSendMsgHeader(uint8_t *buffer, uint16_t buffer_size, uint16_t data_len, uint16_t msg_type, uint32_t fill_data, uint16_t version);
+    static uint16_t calculateChecksum(const uint8_t *data, uint16_t length);
+    static int initSendMsgHeader(uint8_t *buffer, uint16_t buffer_size, uint16_t data_len, uint16_t msg_type, uint32_t fill_data, uint16_t version);
 
 public:
-    SlaveMessageHandle();
-    ~SlaveMessageHandle();
-
     // 初始化函数
-    int messageHandlerInit();
+    static int messageHandlerInit();
 
     // 消息回调函数
     static int32_t messageHandlerCallback(uint8_t *msg_buf, int32_t msg_len);
 
     // 消息发送
-    void sendMessage(uint16_t cmd, cias_fill_type_t type, const uint8_t *data, uint16_t length);
-    void clearSendQueue();
+    static void sendMessage(uint16_t cmd, cias_fill_type_t type, const uint8_t *data, uint16_t length);
+    static void clearSendQueue();
 
     // 音频状态管理
-    uint16_t getAudioState();
-    uint16_t setAudioState(int state);
+    static uint16_t getAudioState();
+    static uint16_t setAudioState(int state);
+    // 清理资源
+    static void cleanup();
 };
 
 #endif //CI1303_AUDIO_SLAVE_MESSAGE_HANDLE_H
