@@ -14,14 +14,15 @@
 // 任务配置
 #define VOICE_SEND_DATA_TO_AUDIO_TASK_NAME                "voice-send-data-to-audio-task"
 #define VOICE_SEND_SLAVE_DATA_TASK_SIZE                   (1024*2)
-#define VOICE_SEND_SLAVE_DATA_TASK_PRIORITY               (4)
+#define VOICE_SEND_SLAVE_DATA_TASK_PRIORITY               (4)                                       //任务优先级
+#define CLOUD_HTTP_DOWNLOAD_BUF_SIZE                      (1024*1 + 1)                              // http 取数据 BUF 大小 1KB
 #define VOICE_RECV_DATA_FROM_AUDIO_TASK_NAME              "voice-recv-data-from-audio-task"
 #define VOICE_RECV_SLAVE_DATA_TASK_SIZE                   (1024*2)
 #define VOICE_RECV_SLAVE_DATA_TASK_PRIORITY               (5)
-#define VOICE_RECV_DATA_QUEUE_ITEAM_COUNT                 10
-#define VOICE_RECV_DATA_QUEUE_ITEAM_SIZE                  (1024*4)
-#define VOICE_SEND_DATA_QUEUE_ITEAM_COUNT                 2
-#define VOICE_SEND_DATA_QUEUE_ITEAM_SIZE                  (1024 + 16 + sizeof(void*) + 4)
+#define VOICE_RECV_DATA_QUEUE_ITEM_COUNT                  10
+#define VOICE_RECV_DATA_QUEUE_ITEM_SIZE                   (64)
+#define VOICE_SEND_DATA_QUEUE_ITEM_COUNT                  2
+#define VOICE_SEND_DATA_QUEUE_ITEM_SIZE                   (CLOUD_HTTP_DOWNLOAD_BUF_SIZE + 50)       // 队列中每个元素的最大长度
 
 #define VOICE_OK 0
 #define VOICE_FAIL 1

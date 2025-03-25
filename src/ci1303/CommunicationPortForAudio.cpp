@@ -69,13 +69,13 @@ int CommunicationPortForAudio::communicationTaskInit() {
     }
 
     // 创建消息队列
-    messageRecvQueue = xQueueCreate(VOICE_RECV_DATA_QUEUE_ITEAM_COUNT, VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
+    messageRecvQueue = xQueueCreate(VOICE_RECV_DATA_QUEUE_ITEM_COUNT, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
     if (messageRecvQueue == nullptr) {
         ESP_LOGE(TAG, "Failed to create messageRecvQueue");
         return VOICE_FAIL;
     }
 
-    messageSendQueue = xQueueCreate(VOICE_SEND_DATA_QUEUE_ITEAM_COUNT, VOICE_SEND_DATA_QUEUE_ITEAM_SIZE);
+    messageSendQueue = xQueueCreate(VOICE_SEND_DATA_QUEUE_ITEM_COUNT, VOICE_SEND_DATA_QUEUE_ITEM_SIZE);
     if (messageSendQueue == nullptr) {
         ESP_LOGE(TAG, "Failed to create messageSendQueue");
         vQueueDelete(messageRecvQueue);
@@ -171,12 +171,12 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
     int32_t ret = 0;
     uint32_t data_len = 0;
     cias_standard_head_t *recv_head_part = nullptr;
-    comm_recv_state_t slave_msg_state = MSG_FIND_HEAD;
+    static comm_recv_state_t slave_msg_state = MSG_FIND_HEAD;
 
-    uint8_t recv_slave_buf[VOICE_RECV_DATA_QUEUE_ITEAM_SIZE];
-    memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
+    uint8_t recv_slave_buf[VOICE_RECV_DATA_QUEUE_ITEM_SIZE];
+    memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
 
-    vTaskDelay(pdMS_TO_TICKS(1000)); // 启动延迟
+    vTaskDelay(1000); // 启动延迟
 
     while (true) {
         // 查找消息头
@@ -186,7 +186,7 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
             if (ret >= 0 && ret <= sizeof(cias_standard_head_t)) {
                 data_len += ret;
                 if (data_len < sizeof(cias_standard_head_t)) {
-                    vTaskDelay(pdMS_TO_TICKS(5));
+                    vTaskDelay(5);
                     continue;
                 } else {
                     recv_head_part = (cias_standard_head_t *)recv_slave_buf;
@@ -201,19 +201,19 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
                     } else {
                         ESP_LOGE(TAG, "recv_headpart magic err1\n");
                         slave_msg_state = MSG_FIND_HEAD;
-                        memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
+                        memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
                     }
                 }
             } else {
                 ESP_LOGE(TAG, "recv_headpart magic err2\n");
                 slave_msg_state = MSG_FIND_HEAD;
-                memset(recv_slave_buf,0,VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
+                memset(recv_slave_buf,0,VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
             }
         }
 
         // 接收消息体
         if (slave_msg_state == MSG_RECV_MSG) {
-            ret = communicationRecv(recv_slave_buf + sizeof(cias_standard_head_t) + data_len, recv_head_part->len - data_len);
+            ret = communicationRecv(recv_slave_buf + sizeof(cias_standard_head_t) + data_len, (recv_head_part->len - data_len));
 
             if (ret>=0 && ret <= recv_head_part->len) {
                 data_len += ret;
@@ -227,7 +227,7 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
             } else {
                 ESP_LOGE(TAG, "recv_headpart magic err2\n");
                 data_len = 0;
-                memset(recv_slave_buf,0,VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
+                memset(recv_slave_buf,0,VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
                 slave_msg_state = MSG_FIND_HEAD;
             }
         }
@@ -242,11 +242,11 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
             }
 
             data_len = 0;
-            memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
+            memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
         }
 
         ret = 0;
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(5);
     }
 }
 

@@ -279,7 +279,7 @@ void SlaveMessageHandle::slaveMessageRecvDealTask(void *pvParameters) {
         return;
     }
 
-    uint8_t recv_buf[VOICE_RECV_DATA_QUEUE_ITEAM_SIZE];
+    uint8_t recv_buf[VOICE_RECV_DATA_QUEUE_ITEM_SIZE];
 
     while (true) {
         if (xQueueReceive(messageRecvQueue, recv_buf, portMAX_DELAY) == pdTRUE) {
@@ -288,7 +288,7 @@ void SlaveMessageHandle::slaveMessageRecvDealTask(void *pvParameters) {
             // 处理收到的消息
             messageHandlerCallback(recv_buf, received_header->len + sizeof(cias_standard_head_t));
         } else {
-            memset(recv_buf, 0, VOICE_RECV_DATA_QUEUE_ITEAM_SIZE);
+            memset(recv_buf, 0, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
         }
         vTaskDelay(pdMS_TO_TICKS(5));
     }
