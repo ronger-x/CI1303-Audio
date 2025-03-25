@@ -306,7 +306,7 @@ void SlaveMessageHandle::slaveMessageRecvDealTask(void *pvParameters) {
 
 // --- 初始化通信任务 ---
 int SlaveMessageHandle::messageHandlerInit() {
-    if (g_commPort.communicationTaskInit() != VOICE_OK) {
+    if (voiceModulePort.communicationTaskInit() != VOICE_OK) {
         return VOICE_FAIL;
     }
     // 创建消息处理任务
@@ -353,7 +353,7 @@ void SlaveMessageHandle::sendMessage(uint16_t cmd, cias_fill_type_t type, const 
     // 直接发送或通过队列发送
     if (cmd == GET_PROFILE || cmd == NEED_PROFILE) {
         // 直接同步发送
-        int32_t result = g_commPort.communicationSend(buffer, 16 + length);
+        int32_t result = voiceModulePort.communicationSend(buffer, 16 + length);
         if (result < 0) {
             ESP_LOGE(TAG, "communicationSend failed");
         }
