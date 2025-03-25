@@ -120,7 +120,7 @@ int CommunicationPortForAudio::communicationTaskInit() {
     BaseType_t xTaskCreateResult = xTaskCreate(
             communicationSendTask,
             VOICE_SEND_DATA_TO_AUDIO_TASK_NAME,
-            VOICE_SEND_SLAVE_DATA_TASK_SIZE,
+            VOICE_SEND_SLAVE_DATA_TASK_SIZE / sizeof(StackType_t),
             this,
             VOICE_SEND_SLAVE_DATA_TASK_PRIORITY,
             &sendTaskHandle
@@ -141,7 +141,7 @@ int CommunicationPortForAudio::communicationTaskInit() {
     xTaskCreateResult = xTaskCreate(
             communicationRecvTask,
             VOICE_RECV_DATA_FROM_AUDIO_TASK_NAME,
-            VOICE_RECV_SLAVE_DATA_TASK_SIZE,
+            VOICE_RECV_SLAVE_DATA_TASK_SIZE / sizeof(StackType_t),
             this,
             VOICE_RECV_SLAVE_DATA_TASK_PRIORITY,
             &recvTaskHandle

@@ -28,7 +28,7 @@ void setup()
     // 初始化 ESP32 日志串口
     Serial.begin(115200);
     // 初始化 WiFi 连接
-    wifiConnect();
+//    wifiConnect();
     // 初始化通信端口
     if (voiceModulePort.communicationPortInit(UART_NUM_1) != VOICE_OK) {
         Serial.println("Failed to initialize voice port");
@@ -54,6 +54,7 @@ void loop()
     // test_http("https://static.rymcu.com/article/1736769289579.mp3"); // 16kbps 16kHz 1bit
     // test_http("https://static.rymcu.com/article/1736865358460.wav"); // 16kbps 16kHz 1bit
     // vTaskDelay(60000 * 5);
+    vTaskDelay(300);
 }
 
 void wifiConnect()
@@ -62,7 +63,7 @@ void wifiConnect()
     WiFi.begin(ssid, password);
     while (WiFiClass::status() != WL_CONNECTED && connectCount > 0)
     {
-        delay(500);
+        vTaskDelay(500);
         Serial.print(".");
         connectCount--;
     }

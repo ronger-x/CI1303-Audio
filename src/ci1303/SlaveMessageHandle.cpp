@@ -313,7 +313,7 @@ int SlaveMessageHandle::messageHandlerInit() {
     BaseType_t xTaskCreateResult = xTaskCreate(
             slaveMessageRecvDealTask,
             VOICE_DEAL_RECV_AUDIO_DATA_TASK_NAME,
-            VOICE_DEAL_RECV_AUDIO_DATA_TASK_SIZE,
+            VOICE_DEAL_RECV_AUDIO_DATA_TASK_SIZE / sizeof(StackType_t),
             this,
             VOICE_DEAL_RECV_AUDIO_DATA_TASK_PRIORITY,
             &recvDealTaskHandle

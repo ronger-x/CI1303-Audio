@@ -12,7 +12,7 @@ constexpr uint16_t CIAS_PCM_UPLOAD_QUEUE_SIZE = 10;
 // 任务配置
 #define VOICE_DEAL_RECV_AUDIO_DATA_TASK_NAME              "voice-deal-recv-audio"
 #define VOICE_DEAL_RECV_AUDIO_DATA_TASK_SIZE              (1024*4)
-#define VOICE_DEAL_RECV_AUDIO_DATA_TASK_PRIORITY          1
+#define VOICE_DEAL_RECV_AUDIO_DATA_TASK_PRIORITY          (4)
 
 // --- Data Structures ---
 
