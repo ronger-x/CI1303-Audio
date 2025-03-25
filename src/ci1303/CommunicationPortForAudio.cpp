@@ -9,7 +9,7 @@ QueueHandle_t messageRecvQueue = nullptr;
 QueueHandle_t messageSendQueue = nullptr;
 
 // --- 全局通信实例 ---
-CommunicationPortForAudio g_commPort;
+CommunicationPortForAudio voiceModulePort;
 
 // --- 构造函数 ---
 CommunicationPortForAudio::CommunicationPortForAudio() : uart_num(UART_NUM_1), initialized(false) {
