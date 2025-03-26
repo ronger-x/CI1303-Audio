@@ -319,46 +319,50 @@ int SlaveMessageHandle::messageHandlerInit() {
 
 // --- 发送消息 ---
 void SlaveMessageHandle::sendMessage(uint16_t cmd, cias_fill_type_t type, const uint8_t *data, uint16_t length) {
-    // 检查长度
+    // 1. Check length
     if (length > CIAS_SEND_MSG_BUF_LEN - 16) {
-        ESP_LOGE(TAG, "sendMessage: Data length %u exceeds max buffer size %u.", length, CIAS_SEND_MSG_BUF_LEN - sizeof(cias_standard_head_t));
+        ESP_LOGE(TAG, "sendMessage: Data length %u exceeds max buffer size %u.", length,
+                 CIAS_SEND_MSG_BUF_LEN - sizeof(cias_standard_head_t));
         return;
     }
+    // 2. Prepare message structure
+    cias_send_msg_t send_msg;
+//    memset(&send_msg, 0, sizeof(send_msg));
+    unsigned int fill_data = 0;
+    fill_data = type;
+    /* 	if (cmd == NET_VOLUME)
+    {
+        fill_data = 0;
+        len = 0;
+    } */
 
-    // 准备消息缓冲区
-    uint8_t *buffer = (uint8_t *)malloc(16 + length);
-    if (!buffer) {
-        ESP_LOGE(TAG, "Failed to allocate memory for message");
-        return;
+    // 3. Initialize header
+    send_msg.type = cmd;
+    initSendMsgHeader(send_msg.data, 16, length, send_msg.type, fill_data, 0x00);
+
+    // 4. Copy data (if present)
+    if (data != nullptr && length > 0 && length <= CIAS_SEND_MSG_BUF_LEN) {
+        memcpy(send_msg.data + 16, data, length);
     }
 
-    // 初始化消息头
-    initSendMsgHeader(buffer, 16, length, cmd, type, 0x00);
+    // 5. Calculate and set checksum
+//    cias_standard_head_t* header = reinterpret_cast<cias_standard_head_t*>(send_msg.data);
+//    header->checksum = calculateChecksum(send_msg.data + sizeof(header->magic), length + sizeof(cias_standard_head_t) - sizeof(header->checksum) - sizeof(header->magic));
 
-    // 复制数据
-    if (data != nullptr && length > 0) {
-        memcpy(buffer + 16, data, length);
-    }
+    // 6. Set total message length
+    send_msg.length = 16 + length;
+    //send_msg.ack_flag is not set in this function
 
-    // 直接发送或通过队列发送
+    // 7. Send the message
     if (cmd == GET_PROFILE || cmd == NEED_PROFILE) {
-        // 直接同步发送
-        int32_t result = CommunicationPortForAudio::communicationSend(buffer, 16 + length);
-        if (result < 0) {
-            ESP_LOGE(TAG, "communicationSend failed");
+        // Direct, synchronous send.
+        if (CommunicationPortForAudio::communicationSend(send_msg.data, send_msg.length) < 0) {
+            ESP_LOGE(TAG, "communication_send failed");
         }
-        free(buffer);
     } else {
-        // 通过队列异步发送
-        comm_message_t msg;
-        msg.data = buffer;
-        msg.length = 16 + length;
-        msg.type = cmd;
-        msg.ack_flag = 1; // 需要释放内存
-
-        if (xQueueSend(messageSendQueue, &msg, pdMS_TO_TICKS(100)) != pdPASS) {
+        // Send via queue (asynchronous).
+        if (messageSendQueue && xQueueSend(messageSendQueue, &send_msg, pdMS_TO_TICKS(100)) != pdPASS) {
             ESP_LOGE(TAG, "Failed to send to queue");
-            free(buffer);
         }
     }
 }
@@ -376,7 +380,7 @@ int SlaveMessageHandle::initSendMsgHeader(uint8_t *buffer, uint16_t buffer_size,
     if (buffer == nullptr) {
         return VOICE_FAIL;
     }
-    cias_standard_head_t *header = (cias_standard_head_t *)buffer;
+    auto *header = reinterpret_cast<cias_standard_head_t *>(buffer);
     header->magic = CIAS_STANDARD_MAGIC;
     header->type = msg_type;
     header->len = data_len;

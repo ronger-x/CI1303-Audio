@@ -26,12 +26,12 @@ int CommunicationPortForAudio::communicationPortInit(uart_port_t uart_port) {
 
     // 配置UART参数
     uart_config_t uart_config = {
-            .baud_rate = VOICE_UART_BAND_RATE,
-            .data_bits = UART_DATA_8_BITS,
-            .parity    = UART_PARITY_DISABLE,
-            .stop_bits = UART_STOP_BITS_1,
-            .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-            .source_clk = UART_SCLK_APB,
+        .baud_rate = VOICE_UART_BAND_RATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_APB,
     };
 
     // 安装UART驱动
@@ -85,12 +85,12 @@ int CommunicationPortForAudio::communicationTaskInit() {
 
     // 创建发送任务
     BaseType_t xTaskCreateResult = xTaskCreate(
-            communicationSendTask,
-            VOICE_SEND_DATA_TO_AUDIO_TASK_NAME,
-            VOICE_SEND_SLAVE_DATA_TASK_SIZE / sizeof(StackType_t),
-            nullptr,
-            VOICE_SEND_SLAVE_DATA_TASK_PRIORITY,
-            &sendTaskHandle
+        communicationSendTask,
+        VOICE_SEND_DATA_TO_AUDIO_TASK_NAME,
+        VOICE_SEND_SLAVE_DATA_TASK_SIZE / sizeof(StackType_t),
+        nullptr,
+        VOICE_SEND_SLAVE_DATA_TASK_PRIORITY,
+        &sendTaskHandle
     );
 
     if (xTaskCreateResult != pdPASS) {
@@ -106,12 +106,12 @@ int CommunicationPortForAudio::communicationTaskInit() {
 
     // 创建接收任务
     xTaskCreateResult = xTaskCreate(
-            communicationRecvTask,
-            VOICE_RECV_DATA_FROM_AUDIO_TASK_NAME,
-            VOICE_RECV_SLAVE_DATA_TASK_SIZE / sizeof(StackType_t),
-            nullptr,
-            VOICE_RECV_SLAVE_DATA_TASK_PRIORITY,
-            &recvTaskHandle
+        communicationRecvTask,
+        VOICE_RECV_DATA_FROM_AUDIO_TASK_NAME,
+        VOICE_RECV_SLAVE_DATA_TASK_SIZE / sizeof(StackType_t),
+        nullptr,
+        VOICE_RECV_SLAVE_DATA_TASK_PRIORITY,
+        &recvTaskHandle
     );
 
     if (xTaskCreateResult != pdPASS) {
@@ -127,7 +127,7 @@ int CommunicationPortForAudio::communicationTaskInit() {
 }
 
 // --- 接收数据函数 ---
-int32_t CommunicationPortForAudio::communicationRecv(uint8_t *addr, int32_t length) {
+int32_t CommunicationPortForAudio::communicationRecv(uint8_t *addr, uint32_t length) {
     if (!initialized) {
         ESP_LOGE(TAG, "UART not initialized");
         return VOICE_FAIL;
@@ -139,42 +139,39 @@ int32_t CommunicationPortForAudio::communicationRecv(uint8_t *addr, int32_t leng
     }
 
     size_t buffered_len;
-    esp_err_t err = uart_get_buffered_data_len(uart_num, &buffered_len);
+    const esp_err_t err = uart_get_buffered_data_len(uart_num, &buffered_len);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "uart_get_buffered_data_len failed: %s", esp_err_to_name(err));
         return VOICE_FAIL;
     }
 
-    if (buffered_len == 0) {
+    if (buffered_len <= 0) {
         return VOICE_OK;
     }
 
-    int bytes_read = uart_read_bytes(uart_num, addr, length, pdMS_TO_TICKS(10));
-    return bytes_read;
+    return uart_read_bytes(uart_num, addr, length, pdMS_TO_TICKS(10));
 }
 
 // --- 发送数据函数 ---
-int32_t CommunicationPortForAudio::communicationSend(const uint8_t *data, uint16_t length) {
+int32_t CommunicationPortForAudio::communicationSend(uint8_t *data, uint32_t length) {
     if (!initialized) {
         ESP_LOGE(TAG, "UART not initialized");
         return VOICE_FAIL;
     }
 
-    int bytes_written = uart_write_bytes(uart_num, (const char *)data, length);
+    int bytes_written = uart_write_bytes(uart_num, data, length);
     uart_wait_tx_done(uart_num, pdMS_TO_TICKS(100));
     return bytes_written;
 }
 
 // --- 接收任务 ---
 void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
-
     int32_t ret = 0;
     uint32_t data_len = 0;
-    cias_standard_head_t *recv_head_part = nullptr;
+    const cias_standard_head_t *recv_head_part = nullptr;
     static comm_recv_state_t slave_msg_state = MSG_FIND_HEAD;
 
-    uint8_t recv_slave_buf[VOICE_RECV_DATA_QUEUE_ITEM_SIZE];
-    memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
+    uint8_t recv_slave_buf[VOICE_RECV_DATA_QUEUE_ITEM_SIZE] = {};
 
     vTaskDelay(1000); // 启动延迟
 
@@ -188,24 +185,23 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
                 if (data_len < sizeof(cias_standard_head_t)) {
                     vTaskDelay(5);
                     continue;
-                } else {
-                    recv_head_part = (cias_standard_head_t *)recv_slave_buf;
-                    data_len = 0;
+                }
+                recv_head_part = reinterpret_cast<cias_standard_head_t *>(recv_slave_buf);
+                data_len = 0;
 
-                    if (recv_head_part->magic == CIAS_STANDARD_MAGIC) { // 预定义的魔数
-                        if (recv_head_part->len == 0) {
-                            slave_msg_state = MSG_VERIFY;
-                        } else {
-                            slave_msg_state = MSG_RECV_MSG;
-                        }
+                if (recv_head_part->magic == CIAS_STANDARD_MAGIC) { // 预定义的魔数
+                    if (recv_head_part->len == 0) {
+                        slave_msg_state = MSG_VERIFY;
                     } else {
-                        ESP_LOGE(TAG, "recv_headpart magic err1\n");
-                        slave_msg_state = MSG_FIND_HEAD;
-                        memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
+                        slave_msg_state = MSG_RECV_MSG;
                     }
+                } else {
+                    ESP_LOGE(TAG, "recv_head_part magic err1\n");
+                    slave_msg_state = MSG_FIND_HEAD;
+                    memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
                 }
             } else {
-                ESP_LOGE(TAG, "recv_headpart magic err2\n");
+                ESP_LOGE(TAG, "recv_head_part magic err2\n");
                 slave_msg_state = MSG_FIND_HEAD;
                 memset(recv_slave_buf,0,VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
             }
@@ -225,7 +221,7 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
                     slave_msg_state = MSG_VERIFY;
                 }
             } else {
-                ESP_LOGE(TAG, "recv_headpart magic err2\n");
+                ESP_LOGE(TAG, "recv_head_part magic err2\n");
                 data_len = 0;
                 memset(recv_slave_buf,0,VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
                 slave_msg_state = MSG_FIND_HEAD;
@@ -253,12 +249,12 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
 // --- 发送任务 ---
 void CommunicationPortForAudio::communicationSendTask(void *pvParameters) {
     if (!isInitialized()) {
-		ESP_LOGE(TAG, "communicationSendTask: Invalid parameters");
-		vTaskDelete(NULL);
-		return;
-	}
+        ESP_LOGE(TAG, "communicationSendTask: Invalid parameters");
+        vTaskDelete(NULL);
+        return;
+    }
 
-    comm_message_t send_msg;
+    cias_send_msg_t send_msg;
 
     while (true) {
         if (xQueueReceive(messageSendQueue, &send_msg, portMAX_DELAY) == pdTRUE) {

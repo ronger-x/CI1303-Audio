@@ -27,21 +27,6 @@
 #define VOICE_OK 0
 #define VOICE_FAIL 1
 
-// 通信层需要的基本消息结构
-typedef struct {
-    uint8_t *data;
-    uint16_t length;
-    uint16_t type;
-    uint32_t ack_flag;
-} comm_message_t;
-
-// --- 接收状态枚举 ---
-typedef enum {
-    MSG_FIND_HEAD = 0,
-    MSG_RECV_MSG = 1,
-    MSG_VERIFY = 2,
-} comm_recv_state_t;
-
 // --- 队列句柄声明 ---
 extern QueueHandle_t messageRecvQueue;
 extern QueueHandle_t messageSendQueue;
@@ -62,8 +47,8 @@ public:
     static int communicationTaskInit();
 
     // 通信方法
-    static int32_t communicationRecv(uint8_t *addr, int32_t length);
-    static int32_t communicationSend(const uint8_t *data, uint16_t length);
+    static int32_t communicationRecv(uint8_t *addr, uint32_t length);
+    static int32_t communicationSend(uint8_t *data, uint32_t length);
 
     // 通信任务
     static void communicationRecvTask(void *pvParameters);

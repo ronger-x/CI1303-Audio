@@ -52,9 +52,16 @@ typedef enum {
     REPEAT_FILL = 0x123456ab,
 } cias_fill_type_t;
 
+// --- 接收状态枚举 ---
+typedef enum {
+    MSG_FIND_HEAD = 0,
+    MSG_RECV_MSG = 1,
+    MSG_VERIFY = 2,
+} comm_recv_state_t;
+
 // --- Constants and Extern Variables ---
 
-#define AUDIO_MUSIC_BUFF_COUNT (29)
+#define AUDIO_MUSIC_BUFF_COUNT (30 -1)//根据 audio 缓存（IOT_AUDIO_PLAY_BUF_SIZE）
 #define AUDIO_MUSIC_BUFF_LEN   (AUDIO_MUSIC_BUFF_COUNT * 1024)
 
 extern volatile bool audio_player_need_data_1L;
