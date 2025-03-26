@@ -232,7 +232,7 @@ void cloudRecvMessageHandle(uint8_t *msg_buf)
 
 // --- 消息处理回调函数 ---
 int32_t SlaveMessageHandle::messageHandlerCallback(uint8_t *msg_buf, int32_t msg_len) {
-    if (!msg_buf || msg_len <= 0) {
+    if (msg_buf == nullptr || msg_len <= 0) {
         return VOICE_FAIL;
     }
 
@@ -240,7 +240,7 @@ int32_t SlaveMessageHandle::messageHandlerCallback(uint8_t *msg_buf, int32_t msg
     cloudRecvMessageHandle(msg_buf);
 #endif
 
-    cias_standard_head_t *phead = (cias_standard_head_t *)msg_buf;
+    auto *phead = reinterpret_cast<cias_standard_head_t *>(msg_buf);
     uint16_t recv_type = phead->type;
 
     switch (recv_type) {
@@ -254,9 +254,6 @@ int32_t SlaveMessageHandle::messageHandlerCallback(uint8_t *msg_buf, int32_t msg
             ESP_LOGI(TAG, "  Command: 0x%04X", recv_cmd);
             break;
         }
-        case WAKE_UP:
-            ESP_LOGI(TAG, "Received WAKE_UP");
-            break;
         case LOCAL_ASR_RESULT_NOTIFY:
             ESP_LOGI(TAG, "Received LOCAL_ASR_RESULT_NOTIFY");
             break;
@@ -267,30 +264,22 @@ int32_t SlaveMessageHandle::messageHandlerCallback(uint8_t *msg_buf, int32_t msg
             ESP_LOGW(TAG, "Unknown message type: 0x%04X", recv_type);
             break;
     }
-    return 0;
+    return VOICE_OK;
 }
 
 // --- 处理接收消息的任务 ---
 void SlaveMessageHandle::slaveMessageRecvDealTask(void *pvParameters) {
-    SlaveMessageHandle *pThis = static_cast<SlaveMessageHandle *>(pvParameters);
-    if (!pThis) {
-        ESP_LOGE(TAG, "slaveMessageRecvDealTask: pThis is NULL!");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    uint8_t recv_buf[VOICE_RECV_DATA_QUEUE_ITEM_SIZE];
+    const cias_standard_head_t *recv_head_part = nullptr;
+    uint8_t recv_slave_buf[VOICE_RECV_DATA_QUEUE_ITEM_SIZE] = {};
 
     while (true) {
-        if (xQueueReceive(messageRecvQueue, recv_buf, portMAX_DELAY) == pdTRUE) {
-            cias_standard_head_t *received_header = (cias_standard_head_t *) recv_buf;
+        if (xQueueReceive(messageRecvQueue, recv_slave_buf, portMAX_DELAY) == pdTRUE) {
+            recv_head_part = reinterpret_cast<cias_standard_head_t *>(recv_slave_buf);
 
             // 处理收到的消息
-            messageHandlerCallback(recv_buf, received_header->len + sizeof(cias_standard_head_t));
-        } else {
-            memset(recv_buf, 0, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
+            messageHandlerCallback(recv_slave_buf, recv_head_part->len + sizeof(cias_standard_head_t));
         }
-        vTaskDelay(pdMS_TO_TICKS(5));
+        memset(recv_slave_buf, 0, VOICE_RECV_DATA_QUEUE_ITEM_SIZE);
     }
 }
 
@@ -356,7 +345,7 @@ void SlaveMessageHandle::sendMessage(uint16_t cmd, cias_fill_type_t type, const 
     // 7. Send the message
     if (cmd == GET_PROFILE || cmd == NEED_PROFILE) {
         // Direct, synchronous send.
-        if (CommunicationPortForAudio::communicationSend(send_msg.data, send_msg.length) < 0) {
+        if (CommunicationPortForAudio::communicationSend(send_msg.data, send_msg.length) <= 0) {
             ESP_LOGE(TAG, "communication_send failed");
         }
     } else {
@@ -388,7 +377,7 @@ int SlaveMessageHandle::initSendMsgHeader(uint8_t *buffer, uint16_t buffer_size,
     header->fill_data = fill_data;
 
     // 计算校验和
-    header->checksum = calculateChecksum(buffer + 4, data_len + buffer_size - 4);
+//    header->checksum = calculateChecksum(buffer + 4, data_len + buffer_size - 4);
 
     return VOICE_OK;
 }

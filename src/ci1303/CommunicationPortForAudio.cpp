@@ -130,23 +130,23 @@ int CommunicationPortForAudio::communicationTaskInit() {
 int32_t CommunicationPortForAudio::communicationRecv(uint8_t *addr, uint32_t length) {
     if (!initialized) {
         ESP_LOGE(TAG, "UART not initialized");
-        return VOICE_FAIL;
+        return -1;
     }
 
     if (length > VOICE_RECV_BUFF_LENGTH) {
         ESP_LOGE(TAG, "Requested length too large: %d > %d", length, VOICE_RECV_BUFF_LENGTH);
-        return VOICE_FAIL;
+        return -1;
     }
 
     size_t buffered_len;
     const esp_err_t err = uart_get_buffered_data_len(uart_num, &buffered_len);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "uart_get_buffered_data_len failed: %s", esp_err_to_name(err));
-        return VOICE_FAIL;
+        return -1;
     }
 
-    if (buffered_len <= 0) {
-        return VOICE_OK;
+    if (buffered_len == 0) {
+        return 0;
     }
 
     return uart_read_bytes(uart_num, addr, length, pdMS_TO_TICKS(10));
@@ -156,7 +156,8 @@ int32_t CommunicationPortForAudio::communicationRecv(uint8_t *addr, uint32_t len
 int32_t CommunicationPortForAudio::communicationSend(uint8_t *data, uint32_t length) {
     if (!initialized) {
         ESP_LOGE(TAG, "UART not initialized");
-        return VOICE_FAIL;
+        vTaskDelete(NULL);
+        return -1;
     }
 
     int bytes_written = uart_write_bytes(uart_num, data, length);
@@ -214,7 +215,7 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
             if (ret>=0 && ret <= recv_head_part->len) {
                 data_len += ret;
                 if (data_len < recv_head_part->len) {
-                    vTaskDelay(pdMS_TO_TICKS(2));
+                    vTaskDelay(2);
                     continue;
                 } else {
                     data_len = 0;
@@ -248,8 +249,8 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
 
 // --- 发送任务 ---
 void CommunicationPortForAudio::communicationSendTask(void *pvParameters) {
-    if (!isInitialized()) {
-        ESP_LOGE(TAG, "communicationSendTask: Invalid parameters");
+    if (!initialized) {
+        ESP_LOGE(TAG, "UART not initialized");
         vTaskDelete(NULL);
         return;
     }
@@ -258,7 +259,7 @@ void CommunicationPortForAudio::communicationSendTask(void *pvParameters) {
 
     while (true) {
         if (xQueueReceive(messageSendQueue, &send_msg, portMAX_DELAY) == pdTRUE) {
-            if (send_msg.data && send_msg.length > 0) {
+            if (send_msg.length > 0) {
                 communicationSend(send_msg.data, send_msg.length);
 
                 // 如果动态分配了内存，需要释放
@@ -267,8 +268,6 @@ void CommunicationPortForAudio::communicationSendTask(void *pvParameters) {
                 }
             }
         }
-
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 

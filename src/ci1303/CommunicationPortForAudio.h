@@ -24,8 +24,18 @@
 #define VOICE_SEND_DATA_QUEUE_ITEM_COUNT                  2
 #define VOICE_SEND_DATA_QUEUE_ITEM_SIZE                   (CLOUD_HTTP_DOWNLOAD_BUF_SIZE + 50)       // 队列中每个元素的最大长度
 
-#define VOICE_OK 0
-#define VOICE_FAIL 1
+/**
+ *
+ * @brief OS status definetion
+ */
+typedef enum
+{
+    VOICE_OK             = 0,    /*success*/
+    VOICE_FAIL           = -1,   /*failure*/
+    VOICE_ERR_NOMEM      = -2,   /*out of memory*/
+    VOICE_ERR_PARAM      = -3,   /*invalid parameter*/
+    VOICE_ERR_TIMEOUT    = -4,   /*timeout*/
+}voice_status;
 
 // --- 队列句柄声明 ---
 extern QueueHandle_t messageRecvQueue;
