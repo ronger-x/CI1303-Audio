@@ -130,23 +130,23 @@ int CommunicationPortForAudio::communicationTaskInit() {
 int32_t CommunicationPortForAudio::communicationRecv(uint8_t *addr, uint32_t length) {
     if (!initialized) {
         ESP_LOGE(TAG, "UART not initialized");
-        return -1;
+        return VOICE_FAIL;
     }
 
     if (length > VOICE_RECV_BUFF_LENGTH) {
         ESP_LOGE(TAG, "Requested length too large: %d > %d", length, VOICE_RECV_BUFF_LENGTH);
-        return -1;
+        return VOICE_FAIL;
     }
 
     size_t buffered_len;
     const esp_err_t err = uart_get_buffered_data_len(uart_num, &buffered_len);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "uart_get_buffered_data_len failed: %s", esp_err_to_name(err));
-        return -1;
+        return VOICE_FAIL;
     }
 
     if (buffered_len == 0) {
-        return 0;
+        return VOICE_OK;
     }
 
     return uart_read_bytes(uart_num, addr, length, pdMS_TO_TICKS(10));
@@ -156,8 +156,7 @@ int32_t CommunicationPortForAudio::communicationRecv(uint8_t *addr, uint32_t len
 int32_t CommunicationPortForAudio::communicationSend(uint8_t *data, uint32_t length) {
     if (!initialized) {
         ESP_LOGE(TAG, "UART not initialized");
-        vTaskDelete(NULL);
-        return -1;
+        return VOICE_FAIL;
     }
 
     int bytes_written = uart_write_bytes(uart_num, data, length);
@@ -251,7 +250,6 @@ void CommunicationPortForAudio::communicationRecvTask(void *pvParameters) {
 void CommunicationPortForAudio::communicationSendTask(void *pvParameters) {
     if (!initialized) {
         ESP_LOGE(TAG, "UART not initialized");
-        vTaskDelete(NULL);
         return;
     }
 
@@ -264,7 +262,7 @@ void CommunicationPortForAudio::communicationSendTask(void *pvParameters) {
 
                 // 如果动态分配了内存，需要释放
                 if (send_msg.ack_flag == 1) {
-                    free(send_msg.data);
+//                    free(send_msg.data);
                 }
             }
         }
