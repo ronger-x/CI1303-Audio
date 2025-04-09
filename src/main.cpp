@@ -21,17 +21,14 @@ const char* opus_stream_url = "https://static.rymcu.com/article/1744194366944.op
 #define PCM_BUFFER_SIZE (MAX_PCM_SAMPLES_PER_CHANNEL * OPUS_CHANNELS)
 
 // 缓冲区大小
-#define NETWORK_BUFFER_SIZE (1024 * 20)        // 网络缓冲区大小（优化为更大块读取）
+#define NETWORK_BUFFER_SIZE (1024 * 4)        // 网络缓冲区大小（优化为更大块读取）
 #define MAX_OPUS_PACKET_SIZE 1400       // Opus 包最大大小（考虑 Ogg 开销）
 
 // 全局变量
 OpusDecoder* opusDecoder = nullptr;
 int16_t pcmOutputBuffer[PCM_BUFFER_SIZE]; // 解码后的 PCM 数据
-uint8_t networkBuffer[NETWORK_BUFFER_SIZE]; // 网络读取缓冲区
 uint8_t currentOpusPacket[MAX_OPUS_PACKET_SIZE]; // 当前 Opus 包
 int currentOpusPacketSize = 0; // 当前 Opus 包大小
-int networkBufferPos = 0; // 网络缓冲区读取位置
-int networkBufferLen = 0; // 网络缓冲区有效数据长度
 
 // Ogg 解析状态
 enum OggParseState
@@ -56,7 +53,7 @@ TaskHandle_t networkTaskHandle = nullptr;
 
 // 函数声明
 void network_stream_task(void* parameter);
-bool parse_ogg_page();
+bool parse_ogg_page(uint8_t* buffer, int* pos, int* len);
 void process_opus_packet(uint8_t* packet, int size);
 void wifiConnect();
 void initOpusDecoder();
@@ -141,6 +138,11 @@ void network_stream_task(void* parameter)
     long totalBytes = 0;
     long bytesRead = 0;
 
+    // 初始化缓冲区
+    uint8_t networkBuffer[NETWORK_BUFFER_SIZE]; // 网络读取缓冲区
+    int networkBufferPos = 0; // 网络缓冲区读取位置
+    int networkBufferLen = 0; // 网络缓冲区有效数据长度
+
     Serial.printf("[TASK] Starting download & decode for: %s\n", url);
     http.begin(url);
     int httpCode = http.GET();
@@ -155,47 +157,52 @@ void network_stream_task(void* parameter)
     totalBytes = http.getSize();
     Serial.printf("[TASK] HTTP GET OK. File size: %ld bytes\n", totalBytes);
 
-    while (client->connected() || networkBufferPos < networkBufferLen)
+    while (bytesRead < totalBytes || totalBytes == -1)
     {
         // 填充网络缓冲区
-        if (networkBufferPos >= networkBufferLen && client->available())
+        if (networkBufferPos >= networkBufferLen && (client->available() || client->connected()))
         {
-            networkBufferLen = client->read(networkBuffer, NETWORK_BUFFER_SIZE);
+            int networkBufferSize = (totalBytes - bytesRead);
+            int remaining = (totalBytes == -1) ? NETWORK_BUFFER_SIZE : min(NETWORK_BUFFER_SIZE, networkBufferSize);
+            networkBufferLen = client->read(networkBuffer, remaining);
             networkBufferPos = 0;
+
             if (networkBufferLen > 0)
             {
                 bytesRead += networkBufferLen;
                 Serial.printf("[TASK] Read %d bytes (Total: %ld/%ld)\n", networkBufferLen, bytesRead, totalBytes);
+            } else if (!client->connected() && !client->available()) {
+                Serial.println("[TASK] Stream ended or connection closed.");
+                break;
             }
             else
             {
-                Serial.println("[TASK] No more data to read.");
-                break; // 无数据可读
+                // 等待更多数据，避免忙等待
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                continue;
             }
         }
-        else if (!client->connected())
+        else
         {
             Serial.println("[TASK] Connection closed by server.");
             break;
         }
-        else
-        {
-            // 等待更多数据，避免忙等待
-            vTaskDelay(10 / portTICK_PERIOD_MS);
-            continue;
-        }
 
         // 解析 Ogg 数据
-
-        if (!parse_ogg_page())
+        if (!parse_ogg_page(networkBuffer, &networkBufferPos, &networkBufferLen))
         {
             Serial.println("[TASK] Ogg parsing failed. Stopping.");
             break;
         }
     }
 
+    // 检查是否处理了所有数据
     Serial.println();
-    Serial.printf("[TASK] Finished processing. Total bytes read: %ld\n", bytesRead);
+    if (bytesRead == totalBytes || (totalBytes == -1 && networkBufferPos >= networkBufferLen)) {
+        Serial.printf("[TASK] Finished processing. Total bytes read: %ld\n", bytesRead);
+    } else {
+        Serial.printf("[TASK] Incomplete processing. Bytes read: %ld, Expected: %ld\n", bytesRead, totalBytes);
+    }
     Serial.printf("[TASK] Stack high water mark: %u bytes remaining\n", uxTaskGetStackHighWaterMark(nullptr));
 
 cleanup:
@@ -213,42 +220,42 @@ cleanup:
 }
 
 // 解析 Ogg 页面
-bool parse_ogg_page()
+bool parse_ogg_page(uint8_t* buffer, int* pos, int* len)
 {
-    if (networkBufferPos >= networkBufferLen) return true; // 数据不足
+    if (*pos >= *len) return true; // 数据不足
 
-    while (networkBufferPos < networkBufferLen)
+    while (*pos < *len)
     {
         switch (oggState)
         {
         case EXPECT_OGG_HEADER:
             {
-                if (networkBufferPos >= networkBufferLen || networkBufferLen - networkBufferPos < 4)
+                if (*pos >= *len || *len - *pos < 4)
                 {
                     Serial.println("[OGG] Reached end of buffer while skipping.");
                     return true; // 等待新数据
                 }
-                if (memcmp(networkBuffer + networkBufferPos, "OggS", 4) == 0)
+                if (memcmp(buffer + *pos, "OggS", 4) == 0)
                 {
                     Serial.println("[OGG] Found OggS capture pattern.");
                     oggState = PROCESS_PAGE_HEADER;
-                    networkBufferPos += 4;
+                    *pos += 4;
                 }
                 else
                 {
                     // Serial.printf("[OGG] Skipping invalid byte at pos %d: %02x\n",
-                    //         networkBufferPos, networkBuffer[networkBufferPos]);
-                    networkBufferPos++;
+                    //         *pos, buffer[*pos]);
+                    *pos++;
                 }
                 break;
             }
 
         case PROCESS_PAGE_HEADER:
             {
-                if (networkBufferLen - networkBufferPos < 23) { return true; } // 27 - 4 ("OggS")
-                pageSegmentsRemaining = networkBuffer[networkBufferPos + 22];
+                if (*len - *pos < 23) { return true; } // 27 - 4 ("OggS")
+                pageSegmentsRemaining = buffer[*pos + 22];
                 Serial.printf("[OGG] Page Header. Segments: %d\n", pageSegmentsRemaining);
-                networkBufferPos += 23;
+                *pos += 23;
                 oggState = PROCESS_SEGMENT_TABLE;
                 currentSegmentIndex = 0;
                 break;
@@ -256,16 +263,16 @@ bool parse_ogg_page()
 
         case PROCESS_SEGMENT_TABLE:
             {
-                if (networkBufferLen - networkBufferPos < pageSegmentsRemaining) { return true; }
+                if (*len - *pos < pageSegmentsRemaining) { return true; }
                 Serial.printf("[OGG] Segment Table %d: ", pageSegmentsRemaining);
                 for (int i = 0; i < pageSegmentsRemaining; i++)
                 {
-                    segmentTable[i] = networkBuffer[networkBufferPos + i];
+                    segmentTable[i] = buffer[*pos + i];
                     Serial.printf("%d ", segmentTable[i]);
                 }
                 // if (pageSegmentsRemaining > 5) { Serial.print("..."); }
                 Serial.println();
-                networkBufferPos += pageSegmentsRemaining;
+                *pos += pageSegmentsRemaining;
                 currentSegmentIndex = 0;
                 segmentBytesRead = 0;
                 segmentBytesExpected = segmentTable[currentSegmentIndex];
@@ -282,7 +289,7 @@ bool parse_ogg_page()
                 }
 
                 int bytesNeeded = segmentBytesExpected - segmentBytesRead;
-                int bytesToCopy = min(networkBufferLen - networkBufferPos, bytesNeeded);
+                int bytesToCopy = min(*len - *pos, bytesNeeded);
 
                 if (currentOpusPacketSize + bytesToCopy > MAX_OPUS_PACKET_SIZE)
                 {
@@ -290,8 +297,8 @@ bool parse_ogg_page()
                     return false;
                 }
 
-                memcpy(currentOpusPacket + currentOpusPacketSize, networkBuffer + networkBufferPos, bytesToCopy);
-                networkBufferPos += bytesToCopy;
+                memcpy(currentOpusPacket + currentOpusPacketSize, buffer + *pos, bytesToCopy);
+                *pos += bytesToCopy;
                 segmentBytesRead += bytesToCopy;
                 currentOpusPacketSize += bytesToCopy;
 
