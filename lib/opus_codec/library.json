@@ -1,0 +1,9 @@
+{
+  "name": "opus_codec",
+  "version": "1.5.2",
+  "description": "Opus audio codec library",
+  "keywords": "audio, codec, opus",
+  "authors": "Xiph.Org Foundation",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}
