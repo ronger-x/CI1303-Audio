@@ -5,39 +5,14 @@
 #ifndef VOICE_MODULE_PROTOCOL_H
 #define VOICE_MODULE_PROTOCOL_H
 
-#include <stdint.h>
+#include <cstdint>
 #include <vector> // 使用 vector 来管理缓冲区更方便
 #include <cstddef> // for size_t
 
 #define VOICE_MODULE_PROTOCOL_HEADER 0x5a5aa5a5
 #define VOICE_MODULE_PROTOCOL_TAIL 0xFB
-/**
-* 1. MP3 帧的样本数: 对于 MPEG-1 Layer 3 (最常见的 MP3 标准)，一个标准的 MP3 帧总是包含 1152 个 PCM 样本。这个数字是固定的，与采样率或声道数无关。
-* 2. MP3 帧的大小 (Bytes): MP3 是一种压缩格式，其帧的大小（以字节为单位）并不是固定的，它取决于 比特率 (Bitrate) 和采样率。比特率表示每秒传输或存储多少比特 (bits)。
-* 3.帧的持续时间:
-*   - 每帧样本数 = 1152 samples
-*   - 采样率 = 16000 samples/second (16kHz)
-*   - 每帧持续时间 = 每帧样本数 / 采样率 = 1152 / 16000 秒 = 0.072 秒
-* 现在，我们可以根据 比特率 来计算帧的大小：
-*
-* 计算公式:
-*
-* FrameSizeInBytes ≈ (144 * BitrateInBitsPerSecond) / SampleRateInHz
-*
-* - BitrateInBitsPerSecond: 音频的比特率（例如 32000 bps 表示 32 kbps）
-* - SampleRateInHz: 采样率（这里是 16000 Hz）
-* - 144: 是一个固定的系数 (1152 samples/frame / 8 bits/byte = 144)
-* - ≈: 使用约等号是因为 MP3 帧有时会包含一个可选的填充字节 (padding byte) ，这会使帧大小增加 1 字节。公式计算的是没有填充的基本大小。
-* 举例计算:
-*
-* 假设您的 16kHz 单声道 MP3 使用了不同的比特率：
 
-* - 如果比特率是 32 kbps (32000 bps):
-*   FrameSize ≈ (144 * 32000) / 16000 = 144 * 2 = 288 bytes
-*   (实际大小可能是 288 或 289 bytes，取决于是否有填充)
-*
-*/
-#define VOICE_MODULE_MAX_PAYLOAD_SIZE  1050 // 每次传输的MP3数据最大字节数 (VOICE_MODULE_MAX_PAYLOAD_SIZE > 144 * 7 + VOICE_MODULE_HEADER_SIZE + VOICE_MODULE_FOOTER_SIZE)
+#define VOICE_MODULE_MAX_PAYLOAD_SIZE  1024
 #define VOICE_MODULE_HEADER_SIZE       (4 + 1 + 2 + 2) // header, type, seq, length
 #define VOICE_MODULE_FOOTER_SIZE       (2 + 1)         // crc16, tail
 #define VOICE_MODULE_MAX_PACKET_SIZE   (VOICE_MODULE_HEADER_SIZE + VOICE_MODULE_MAX_PAYLOAD_SIZE + VOICE_MODULE_FOOTER_SIZE)
